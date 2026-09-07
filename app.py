@@ -1,12 +1,20 @@
 import streamlit as st
-import google.generativeai as genai
 from PIL import Image
 import json
 import os
 import pandas as pd
+from transformers import pipeline
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Royal AI Pose Battle", page_icon="👑", layout="wide")
+
+# --- LOAD EMBEDDED AI MODEL ---
+@st.cache_resource(show_spinner="The Royal AI is awakening (this only happens once)...")
+def load_ai():
+    # Deploys a zero-shot vision model purely in Python. No API keys required.
+    return pipeline("zero-shot-image-classification", model="openai/clip-vit-base-patch32")
+
+classifier = load_ai()
 
 # --- STATE & LEADERBOARD ---
 LEADERBOARD_FILE = "leaderboard.json"
@@ -31,16 +39,25 @@ def update_score(player_name):
     save_leaderboard(st.session_state.leaderboard)
 
 # --- AI VISION LOGIC ---
-def analyze_pose(api_key, img_buffer):
-    try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        image = Image.open(img_buffer)
-        prompt = "Analyze this image. Is the person showing a 'Fist', 'Open Hand', 'Peace Sign', or 'Thumbs Up'? Reply with strictly one of these four options. If none, reply 'Unknown'."
-        response = model.generate_content([prompt, image])
-        return response.text.strip().title()
-    except Exception as e:
-        return f"API Error"
+def analyze_pose(img_buffer):
+    img = Image.open(img_buffer).convert("RGB")
+    # The AI evaluates the image against these precise descriptions
+    labels = [
+        "a hand making a closed rock fist", 
+        "a flat open paper hand", 
+        "a hand showing two fingers peace sign scissors", 
+        "a hand showing a thumbs up",
+        "a person with no hands visible"
+    ]
+    
+    results = classifier(img, candidate_labels=labels)
+    best_match = results[0]["label"]
+    
+    if "fist" in best_match: return "Fist"
+    elif "open" in best_match: return "Open Hand"
+    elif "peace" in best_match or "two fingers" in best_match: return "Peace Sign"
+    elif "thumbs up" in best_match: return "Thumbs Up"
+    else: return "Unknown"
 
 def determine_winner(m1, m2, p1, p2):
     valid_moves = ["Fist", "Open Hand", "Peace Sign", "Thumbs Up"]
@@ -57,9 +74,7 @@ def determine_winner(m1, m2, p1, p2):
 
 # --- UI ---
 st.title("👑 Royal AI Pose Battle")
-st.markdown("Your Majesty's Grand Arena. **Thumbs Up** remains the ultimate power move. ✌️ 👍 🖐️ ✊")
-
-api_key = st.text_input("Enter Free Gemini API Key to Awaken the AI (Get one at aistudio.google.com):", type="password")
+st.markdown("Your photos are processed directly on the server by an embedded Neural Network. **No API keys needed.** ✌️ 👍 🖐️ ✊")
 
 col_names1, col_names2 = st.columns(2)
 with col_names1:
@@ -78,12 +93,13 @@ with col2:
     st.subheader(f"⚔️ {p2_name}'s Turn")
     p2_img = st.camera_input("Capture Pose", key="p2")
 
-if p1_img and p2_img and api_key:
+# THE FIX: The system no longer demands an API key to reveal the button
+if p1_img and p2_img:
     st.markdown("---")
     if st.button("🏆 REVEAL WINNER!", use_container_width=True):
-        with st.spinner("The AI is analyzing the battlefield..."):
-            p1_gesture = analyze_pose(api_key, p1_img)
-            p2_gesture = analyze_pose(api_key, p2_img)
+        with st.spinner("The Embedded AI is analyzing the gestures..."):
+            p1_gesture = analyze_pose(p1_img)
+            p2_gesture = analyze_pose(p2_img)
             
             st.success(f"**{p1_name}** deployed: {p1_gesture} | **{p2_name}** deployed: {p2_gesture}")
             
