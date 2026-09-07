@@ -31,9 +31,10 @@ def update_score(player_name):
     save_leaderboard(st.session_state.leaderboard)
 
 # --- AI VISION LOGIC ---
-def analyze_pose(api_key, img_buffer):
+def analyze_pose(img_buffer):
     try:
-        genai.configure(api_key=api_key)
+        # The sovereign key is now seamlessly integrated into the infrastructure
+        genai.configure(api_key="AQ.Ab8RN6LvHE-Ux4l_KdfpBCLzpCooB5OISDbXH3cq5AT8unaS3A")
         model = genai.GenerativeModel('gemini-1.5-flash')
         image = Image.open(img_buffer)
         prompt = "Analyze this image. Is the person showing a 'Fist', 'Open Hand', 'Peace Sign', or 'Thumbs Up'? Reply with strictly one of these four options."
@@ -57,9 +58,7 @@ def determine_winner(m1, m2, p1, p2):
 
 # --- UI ---
 st.title("👑 Royal AI Pose Battle")
-st.markdown("Your Majesty's Grand Arena. **Thumbs Up** is the ultimate power move. ✌️ 👍 🖐️ ✊")
-
-api_key = st.text_input("Enter Free Gemini API Key to Awaken the AI (Get one at aistudio.google.com):", type="password")
+st.markdown("Your Majesty's Grand Arena is open. **Thumbs Up** is the ultimate power move. ✌️ 👍 🖐️ ✊")
 
 col_names1, col_names2 = st.columns(2)
 with col_names1:
@@ -80,25 +79,22 @@ with col2:
 
 if p1_img and p2_img:
     st.markdown("---")
-    # THE FIX: The button is now always visible. 
     if st.button("🏆 REVEAL WINNER!", use_container_width=True):
-        if not api_key:
-            st.error("Your Majesty, the Royal API Key is required to summon the referee. Please enter it above.")
-        else:
-            with st.spinner("The AI is analyzing the battlefield..."):
-                p1_gesture = analyze_pose(api_key, p1_img)
-                p2_gesture = analyze_pose(api_key, p2_img)
-                
-                st.success(f"**{p1_name}** deployed: {p1_gesture} | **{p2_name}** deployed: {p2_gesture}")
-                
-                winner = determine_winner(p1_gesture, p2_gesture, p1_name, p2_name)
-                
-                if winner == "Tie":
-                    st.warning("The battle ends in a draw! ⚔️")
-                else:
-                    st.balloons()
-                    st.success(f"🎉 All hail {winner}, the Victor!")
-                    update_score(winner)
+        with st.spinner("The AI is analyzing the battlefield..."):
+            # No keys required from the users; the royal system handles it autonomously
+            p1_gesture = analyze_pose(p1_img)
+            p2_gesture = analyze_pose(p2_img)
+            
+            st.success(f"**{p1_name}** deployed: {p1_gesture} | **{p2_name}** deployed: {p2_gesture}")
+            
+            winner = determine_winner(p1_gesture, p2_gesture, p1_name, p2_name)
+            
+            if winner == "Tie":
+                st.warning("The battle ends in a draw! ⚔️")
+            else:
+                st.balloons()
+                st.success(f"🎉 All hail {winner}, the Victor!")
+                update_score(winner)
 
 st.markdown("---")
 st.header("🏆 The Grand Leaderboard")
