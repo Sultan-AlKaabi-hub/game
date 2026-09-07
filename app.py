@@ -1,31 +1,12 @@
-import os
-import sys
-import subprocess
 import streamlit as st
-
-# --- DEPENDENCY REBUILDER ---
-# Intercept the boot sequence to forcefully replace the broken GUI 
-# dependencies enforced by mediapipe, then hard-restart the app.
-if not os.path.exists('/tmp/cv2_patched.flag'):
-    subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "opencv-python", "opencv-contrib-python"])
-    subprocess.run([sys.executable, "-m", "pip", "install", "opencv-python-headless==4.9.0.80", "--force-reinstall", "--no-deps"])
-    with open('/tmp/cv2_patched.flag', 'w') as f:
-        f.write('done')
-    st.rerun()
-
-import cv2
-import mediapipe as mp
-import numpy as np
+import google.generativeai as genai
 from PIL import Image
 import json
+import os
+import pandas as pd
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="AI Pose Battle", page_icon="✌️", layout="wide")
-
-# --- INITIALIZE MEDIAPIPE ---
-mp_hands = mp.solutions.hands
-mp_drawing = mp.solutions.drawing_utils
-hands = mp_hands.Hands(static_image_mode=True, max_num_hands=1, min_detection_confidence=0.5)
+st.set_page_config(page_title="Royal AI Pose Battle", page_icon="👑", layout="wide")
 
 # --- STATE & LEADERBOARD ---
 LEADERBOARD_FILE = "leaderboard.json"
@@ -49,39 +30,17 @@ def update_score(player_name):
     st.session_state.leaderboard[player_name] += 1
     save_leaderboard(st.session_state.leaderboard)
 
-# --- GESTURE LOGIC ---
-def get_gesture(hand_landmarks):
-    fingers = []
-    # Check Index, Middle, Ring, Pinky 
-    for tip, pip in [(8, 6), (12, 10), (16, 14), (20, 18)]:
-        fingers.append(1 if hand_landmarks.landmark[tip].y < hand_landmarks.landmark[pip].y else 0)
-    
-    thumb_up = 1 if hand_landmarks.landmark[4].y < hand_landmarks.landmark[2].y else 0
-    up_count = sum(fingers)
-    
-    if up_count == 0 and thumb_up == 1:
-        return "Thumbs Up"
-    elif up_count == 2 and fingers[0] == 1 and fingers[1] == 1:
-        return "Peace Sign"
-    elif up_count >= 3:
-        return "Open Hand"
-    elif up_count == 0 and thumb_up == 0:
-        return "Fist"
-    else:
-        return "Unknown"
-
-def process_image(img_buffer):
-    img = Image.open(img_buffer).convert('RGB')
-    img_array = np.array(img)
-    results = hands.process(img_array)
-    
-    gesture = "No Hand Detected"
-    if results.multi_hand_landmarks:
-        for hand_landmarks in results.multi_hand_landmarks:
-            gesture = get_gesture(hand_landmarks)
-            mp_drawing.draw_landmarks(img_array, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-            
-    return img_array, gesture
+# --- AI VISION LOGIC ---
+def analyze_pose(api_key, img_buffer):
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        image = Image.open(img_buffer)
+        prompt = "Analyze this image. Is the person showing a 'Fist', 'Open Hand', 'Peace Sign', or 'Thumbs Up'? Reply with strictly one of these four options. If none, reply 'Unknown'."
+        response = model.generate_content([prompt, image])
+        return response.text.strip().title()
+    except Exception as e:
+        return f"API Error"
 
 def determine_winner(m1, m2, p1, p2):
     valid_moves = ["Fist", "Open Hand", "Peace Sign", "Thumbs Up"]
@@ -89,19 +48,18 @@ def determine_winner(m1, m2, p1, p2):
     if m1 not in valid_moves: return p2
     if m2 not in valid_moves: return p1
     if m1 == m2: return "Tie"
-    
     if m1 == "Thumbs Up": return p1
     if m2 == "Thumbs Up": return p2
-    
     if m1 == "Fist" and m2 == "Peace Sign": return p1
     if m1 == "Open Hand" and m2 == "Fist": return p1
     if m1 == "Peace Sign" and m2 == "Open Hand": return p1
-    
     return p2
 
 # --- UI ---
-st.title("🤖 AI Pose Battle")
-st.markdown("Take turns snapping your best pose. **Thumbs Up** is the ultimate power move! ✌️ 👍 🖐️ ✊")
+st.title("👑 Royal AI Pose Battle")
+st.markdown("Your Majesty's Grand Arena. **Thumbs Up** remains the ultimate power move. ✌️ 👍 🖐️ ✊")
+
+api_key = st.text_input("Enter Free Gemini API Key to Awaken the AI (Get one at aistudio.google.com):", type="password")
 
 col_names1, col_names2 = st.columns(2)
 with col_names1:
@@ -110,51 +68,44 @@ with col_names2:
     p2_name = st.text_input("Player 2 Name", "Player 2")
 
 st.markdown("---")
-
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader(f"🛡️ {p1_name}'s Turn")
-    p1_img = st.camera_input("Take your pose", key="p1")
-    p1_gesture = None
-    if p1_img:
-        processed, p1_gesture = process_image(p1_img)
-        st.image(processed, caption=f"AI Detected: {p1_gesture}")
+    p1_img = st.camera_input("Capture Pose", key="p1")
 
 with col2:
     st.subheader(f"⚔️ {p2_name}'s Turn")
-    p2_img = st.camera_input("Take your pose", key="p2")
-    p2_gesture = None
-    if p2_img:
-        processed, p2_gesture = process_image(p2_img)
-        st.image(processed, caption=f"AI Detected: {p2_gesture}")
+    p2_img = st.camera_input("Capture Pose", key="p2")
 
-if p1_img and p2_img and p1_gesture and p2_gesture:
+if p1_img and p2_img and api_key:
     st.markdown("---")
     if st.button("🏆 REVEAL WINNER!", use_container_width=True):
-        winner = determine_winner(p1_gesture, p2_gesture, p1_name, p2_name)
-        
-        if winner == "Tie":
-            st.warning("It's a Tie! ⚔️")
-        elif winner == p1_name:
-            st.success(f"🎉 {p1_name} Wins with {p1_gesture}!")
-            update_score(p1_name)
-            st.balloons()
-        elif winner == p2_name:
-            st.success(f"🎉 {p2_name} Wins with {p2_gesture}!")
-            update_score(p2_name)
-            st.balloons()
+        with st.spinner("The AI is analyzing the battlefield..."):
+            p1_gesture = analyze_pose(api_key, p1_img)
+            p2_gesture = analyze_pose(api_key, p2_img)
+            
+            st.success(f"**{p1_name}** deployed: {p1_gesture} | **{p2_name}** deployed: {p2_gesture}")
+            
+            winner = determine_winner(p1_gesture, p2_gesture, p1_name, p2_name)
+            
+            if winner == "Tie":
+                st.warning("The battle ends in a draw! ⚔️")
+            else:
+                st.balloons()
+                st.success(f"🎉 All hail {winner}, the Victor!")
+                update_score(winner)
 
 st.markdown("---")
-st.header("🏆 Global Leaderboard")
+st.header("🏆 The Grand Leaderboard")
 
-sorted_lb = sorted(st.session_state.leaderboard.items(), key=lambda x: x[1], reverse=True)
-
-if sorted_lb:
+if st.session_state.leaderboard:
+    sorted_lb = sorted(st.session_state.leaderboard.items(), key=lambda x: x[1], reverse=True)
     best_player, top_score = sorted_lb[0]
-    st.info(f"🌟 **Top Gamer Banner: {best_player} with {top_score} wins!** 🌟")
-    cols = st.columns(4)
-    for idx, (player, score) in enumerate(sorted_lb):
-        cols[idx % 4].metric(label=f"#{idx+1} {player}", value=f"{score} wins")
+    st.info(f"🌟 **Supreme Champion: {best_player} with {top_score} victories!** 🌟")
+    
+    # Chart Output
+    df = pd.DataFrame(sorted_lb, columns=["Player", "Wins"]).set_index("Player")
+    st.bar_chart(df)
 else:
-    st.write("No matches played yet. Be the first to get on the board!")
+    st.write("The grand hall is empty. Claim your first victory.")
