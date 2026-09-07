@@ -1,17 +1,26 @@
-import os
 import sys
+import subprocess
 
-# --- DEPENDENCY HACK ---
-# MediaPipe forces a GUI version of OpenCV that crashes Streamlit Cloud.
-# We surgically remove it before importing anything else.
-os.system(f"{sys.executable} -m pip uninstall -y opencv-python opencv-contrib-python")
+# --- SURGICAL CLOUD PATCH ---
+try:
+    import cv2
+except ImportError:
+    # Catch libGL/GUI errors caused by mediapipe's forced dependencies
+    # and forcefully overwrite them with the headless binaries at runtime.
+    subprocess.run([
+        sys.executable, "-m", "pip", "install", 
+        "opencv-python-headless==4.9.0.80", "--force-reinstall", "--no-deps"
+    ])
+    if "cv2" in sys.modules:
+        del sys.modules["cv2"]
+    import cv2
 
 import streamlit as st
-import cv2
 import mediapipe as mp
 import numpy as np
 from PIL import Image
 import json
+import os
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="AI Pose Battle", page_icon="✌️", layout="wide")
