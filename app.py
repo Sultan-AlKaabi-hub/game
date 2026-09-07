@@ -1,10 +1,17 @@
+import os
+import sys
+
+# --- DEPENDENCY HACK ---
+# MediaPipe forces a GUI version of OpenCV that crashes Streamlit Cloud.
+# We surgically remove it before importing anything else.
+os.system(f"{sys.executable} -m pip uninstall -y opencv-python opencv-contrib-python")
+
 import streamlit as st
 import cv2
 import mediapipe as mp
 import numpy as np
 from PIL import Image
 import json
-import os
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="AI Pose Battle", page_icon="✌️", layout="wide")
@@ -12,7 +19,6 @@ st.set_page_config(page_title="AI Pose Battle", page_icon="✌️", layout="wide
 # --- INITIALIZE MEDIAPIPE ---
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
-# static_image_mode=True is required for processing individual photos correctly
 hands = mp_hands.Hands(static_image_mode=True, max_num_hands=1, min_detection_confidence=0.5)
 
 # --- STATE & LEADERBOARD ---
@@ -40,13 +46,11 @@ def update_score(player_name):
 # --- GESTURE LOGIC ---
 def get_gesture(hand_landmarks):
     fingers = []
-    # Check Index, Middle, Ring, Pinky (Tip vs Pip joint)
+    # Check Index, Middle, Ring, Pinky 
     for tip, pip in [(8, 6), (12, 10), (16, 14), (20, 18)]:
         fingers.append(1 if hand_landmarks.landmark[tip].y < hand_landmarks.landmark[pip].y else 0)
     
-    # Thumb (Heuristic: tip is higher than the MCP joint)
     thumb_up = 1 if hand_landmarks.landmark[4].y < hand_landmarks.landmark[2].y else 0
-    
     up_count = sum(fingers)
     
     if up_count == 0 and thumb_up == 1:
@@ -61,7 +65,6 @@ def get_gesture(hand_landmarks):
         return "Unknown"
 
 def process_image(img_buffer):
-    # Convert uploaded webcam image to RGB array
     img = Image.open(img_buffer).convert('RGB')
     img_array = np.array(img)
     results = hands.process(img_array)
@@ -70,28 +73,20 @@ def process_image(img_buffer):
     if results.multi_hand_landmarks:
         for hand_landmarks in results.multi_hand_landmarks:
             gesture = get_gesture(hand_landmarks)
-            # Draw the landmarks on the image
             mp_drawing.draw_landmarks(img_array, hand_landmarks, mp_hands.HAND_CONNECTIONS)
             
     return img_array, gesture
 
 def determine_winner(m1, m2, p1, p2):
     valid_moves = ["Fist", "Open Hand", "Peace Sign", "Thumbs Up"]
-    if m1 not in valid_moves and m2 not in valid_moves: 
-        return "Tie"
-    if m1 not in valid_moves: 
-        return p2
-    if m2 not in valid_moves: 
-        return p1
+    if m1 not in valid_moves and m2 not in valid_moves: return "Tie"
+    if m1 not in valid_moves: return p2
+    if m2 not in valid_moves: return p1
+    if m1 == m2: return "Tie"
     
-    if m1 == m2: 
-        return "Tie"
-    
-    # Thumbs up is the ultimate move
     if m1 == "Thumbs Up": return p1
     if m2 == "Thumbs Up": return p2
     
-    # Standard Rock Paper Scissors mechanics
     if m1 == "Fist" and m2 == "Peace Sign": return p1
     if m1 == "Open Hand" and m2 == "Fist": return p1
     if m1 == "Peace Sign" and m2 == "Open Hand": return p1
@@ -112,7 +107,6 @@ st.markdown("---")
 
 col1, col2 = st.columns(2)
 
-# Player 1 View
 with col1:
     st.subheader(f"🛡️ {p1_name}'s Turn")
     p1_img = st.camera_input("Take your pose", key="p1")
@@ -121,7 +115,6 @@ with col1:
         processed, p1_gesture = process_image(p1_img)
         st.image(processed, caption=f"AI Detected: {p1_gesture}")
 
-# Player 2 View
 with col2:
     st.subheader(f"⚔️ {p2_name}'s Turn")
     p2_img = st.camera_input("Take your pose", key="p2")
@@ -130,7 +123,6 @@ with col2:
         processed, p2_gesture = process_image(p2_img)
         st.image(processed, caption=f"AI Detected: {p2_gesture}")
 
-# Battle Logic
 if p1_img and p2_img and p1_gesture and p2_gesture:
     st.markdown("---")
     if st.button("🏆 REVEAL WINNER!", use_container_width=True):
@@ -147,7 +139,6 @@ if p1_img and p2_img and p1_gesture and p2_gesture:
             update_score(p2_name)
             st.balloons()
 
-# Leaderboard
 st.markdown("---")
 st.header("🏆 Global Leaderboard")
 
@@ -156,7 +147,6 @@ sorted_lb = sorted(st.session_state.leaderboard.items(), key=lambda x: x[1], rev
 if sorted_lb:
     best_player, top_score = sorted_lb[0]
     st.info(f"🌟 **Top Gamer Banner: {best_player} with {top_score} wins!** 🌟")
-
     cols = st.columns(4)
     for idx, (player, score) in enumerate(sorted_lb):
         cols[idx % 4].metric(label=f"#{idx+1} {player}", value=f"{score} wins")
