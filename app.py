@@ -1,26 +1,23 @@
+import os
 import sys
 import subprocess
-
-# --- SURGICAL CLOUD PATCH ---
-try:
-    import cv2
-except ImportError:
-    # Catch libGL/GUI errors caused by mediapipe's forced dependencies
-    # and forcefully overwrite them with the headless binaries at runtime.
-    subprocess.run([
-        sys.executable, "-m", "pip", "install", 
-        "opencv-python-headless==4.9.0.80", "--force-reinstall", "--no-deps"
-    ])
-    if "cv2" in sys.modules:
-        del sys.modules["cv2"]
-    import cv2
-
 import streamlit as st
+
+# --- DEPENDENCY REBUILDER ---
+# Intercept the boot sequence to forcefully replace the broken GUI 
+# dependencies enforced by mediapipe, then hard-restart the app.
+if not os.path.exists('/tmp/cv2_patched.flag'):
+    subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "opencv-python", "opencv-contrib-python"])
+    subprocess.run([sys.executable, "-m", "pip", "install", "opencv-python-headless==4.9.0.80", "--force-reinstall", "--no-deps"])
+    with open('/tmp/cv2_patched.flag', 'w') as f:
+        f.write('done')
+    st.rerun()
+
+import cv2
 import mediapipe as mp
 import numpy as np
 from PIL import Image
 import json
-import os
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="AI Pose Battle", page_icon="✌️", layout="wide")
